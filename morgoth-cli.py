@@ -106,5 +106,36 @@ def mkrelease(xpi_file, profile):
     quit(0)
 
 
+@cli.command()
+@click.argument('releases', nargs=-1)
+def mksuperblob(releases):
+    names = []
+
+    for release in releases:
+        with open(release, 'r') as f:
+            release_data = json.loads(f.read())
+        names.append(release_data['name'])
+
+    if not len(names):
+        print(Fore.RED + 'No releases specified.')
+        quit(1)
+
+    sb_name = 'SystemAddons-{}-Superblob'.format('-'.join(names))
+    sb_data = {
+      'blobs': names,
+      'name': sb_name,
+      'schema_version': 4000
+    }
+
+    sb_path = 'releases/superblobs/{}.json'.format(sb_name)
+    os.makedirs('releases/superblobs', exist_ok=True)
+    with open(sb_path, 'w') as f:
+        f.write(json.dumps(sb_data, indent=2, sort_keys=True))
+
+    print(Style.RESET_ALL + 'Saving to: {}{}'.format(Style.BRIGHT, sb_path))
+
+    quit(0)
+
+
 if __name__ == '__main__':
     cli()
