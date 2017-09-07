@@ -1,5 +1,6 @@
 *.xpi
 .morgoth.yml
+/.morgoth/
 /releases/
 
 # Byte-compiled / optimized / DLL files
