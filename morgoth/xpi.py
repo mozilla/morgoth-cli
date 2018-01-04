@@ -7,6 +7,12 @@ from xml.etree import ElementTree
 
 
 PLATFORMS = {
+    'Darwin_x86-gcc3': {
+      'alias': 'default',
+    },
+    'Darwin_x86_64-gcc3': {
+      'alias': 'default'
+    },
     'Darwin_x86-gcc3-u-i386-x86_64': {
       'alias': 'default'
     },

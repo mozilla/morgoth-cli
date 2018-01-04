@@ -36,8 +36,6 @@ class Settings(object):
         return gnupg.GPG(binary=self.get('gpg.binary'), homedir=self.get('gpg.homedir'),
                          use_agent=True)
 
-
-
     @staticmethod
     def _parse_key(key):
         keys = key.split('.', 1)
@@ -90,4 +88,7 @@ class Settings(object):
             self.config.write(f)
 
 
-settings = Settings(CONFIG_PATH)
+try:
+    settings = Settings(CONFIG_PATH)
+except FileNotFoundError:
+    settings = Settings(None)

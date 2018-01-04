@@ -2,12 +2,14 @@ import os
 import json
 import tempfile
 
+from hashlib import sha256
+
 import boto3
 import click
 
 from colorama import Fore, Style
 
-from morgoth import ENVIRONMENT_PATH
+from morgoth import CONFIG_PATH, ENVIRONMENT_PATH, STATUS_5H17
 from morgoth.environment import Environment
 from morgoth.settings import GPGImproperlyConfigured, settings
 from morgoth.utils import output, validate_environment
@@ -59,6 +61,8 @@ def init(ctx, environment, username):
     environment.save(ENVIRONMENT_PATH)
 
     if username:
+        settings.path = CONFIG_PATH
+
         if click.confirm('Do you want to save your username?'):
             ctx.invoke(config, key='username', value=username)
 
@@ -120,9 +124,23 @@ def config(key, value, delete, list):
 
 
 @cli.command()
+@click.option('--verbose', '-v', is_flag=True)
+def status(verbose):
+    """Show the current status."""
+    if verbose:
+        output(STATUS_5H17)
+
+
+@cli.group()
+def make():
+    """Make a new object."""
+    pass
+
+
+@make.command('release')
 @click.option('--profile', default=settings.get('aws.profile'))
 @click.argument('xpi_file')
-def mkrelease(xpi_file, profile):
+def make_release(xpi_file, profile):
     """Make a new release from an XPI file."""
     prefix = settings.get('aws.prefix')
 
@@ -146,7 +164,7 @@ def mkrelease(xpi_file, profile):
 
         session = boto3.Session(profile_name=profile)
         s3 = session.resource('s3')
-        bucket = s3.Bucket(settings.get('aws', {})['bucket_name'])
+        bucket = s3.Bucket(settings.get('aws.bucket_name'))
 
         exists = False
         for obj in bucket.objects.filter(Prefix=prefix):
@@ -193,12 +211,11 @@ def mkrelease(xpi_file, profile):
     output('')
 
 
-@cli.command()
+@make.command('superblob')
 @click.argument('releases', nargs=-1)
-def mksuperblob(releases):
-    """Make a new superblob from one or more releases."""
+def make_superblob(releases):
+    """Make a new superblob from releases."""
     names = []
-    short_names = []
 
     for release in releases:
         with open(release, 'r') as f:
@@ -208,15 +225,16 @@ def mksuperblob(releases):
             if k.startswith(short_name):
                 version = release_data['addons'][k]['version']
         names.append(release_data['name'])
-        short_names.append('{}-{}'.format(short_name, version))
 
     if not len(names):
         output('No releases specified.', Fore.RED)
         exit(1)
 
     names.sort()
+    names_string = '-'.join(names)
+    names_hash = sha256(names_string.encode()).hexdigest()
 
-    sb_name = 'Superblob-{}'.format('-'.join(short_names))
+    sb_name = 'Superblob-{}'.format(names_hash)
     sb_data = {
       'blobs': names,
       'name': sb_name,
