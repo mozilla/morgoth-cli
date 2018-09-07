@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 import tempfile
 import zipfile
@@ -69,15 +70,26 @@ class XPI(object):
         except zipfile.BadZipfile:
             raise XPI.BadZipfile()
 
-        rdf = ElementTree.parse(os.path.join(tmpdir, 'install.rdf'))
-        description = rdf.getroot()[0]
+        rdf_path = os.path.join(tmpdir, 'install.rdf')
+        manifest_path = os.path.join(tmpdir, 'manifest.json')
 
-        for child in description:
-            if child.tag.endswith('id'):
-                self.name = child.text
+        if os.path.exists(rdf_path):
+            rdf = ElementTree.parse(rdf_path)
+            description = rdf.getroot()[0]
 
-            if child.tag.endswith('version'):
-                self.version = child.text
+            for child in description:
+                if child.tag.endswith('id'):
+                    self.name = child.text
+
+                if child.tag.endswith('version'):
+                    self.version = child.text
+        elif os.path.exists(manifest_path):
+            with open(manifest_path) as f:
+                manifest = json.loads(f.read())
+                self.name = manifest.get('applications', {}).get('gecko', {}).get('id')
+                self.version = manifest.get('version')
+        else:
+            raise XPI.BadXPIfile()
 
         if not self.name or not self.version:
             raise XPI.BadXPIfile()
