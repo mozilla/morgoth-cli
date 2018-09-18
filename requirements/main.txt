@@ -7,7 +7,9 @@ click==6.7 \
 colorama==0.3.9 \
     --hash=sha256:463f8483208e921368c9f306094eb6f725c6ca42b0f97e313cb5d5512459feda \
     --hash=sha256:48eb22f4f8461b1df5734a074b57042430fb06e1d61bd1e11b078c0fe6d7a1f1
-gnupg==2.3.1 \
-    --hash=sha256:d2e16c486aaeecbb65633f8493ccab025e2487c0e1dc59a83c520b6f81dff9b8 \
-    --hash=sha256:be656a2f693dbac4362537c1b6cfd03131ac5ce7a4b2bb21bff7e3145f94f7ea \
-    --hash=sha256:8db5a05c369dbc231dab4c98515ce828f2dffdc14f1534441a6c59b71c6d2031
+python-gnupg==0.4.3 \
+    --hash=sha256:2d158dfc6b54927752b945ebe57e6a0c45da27747fa3b9ae66eccc0d2147ac0d \
+    --hash=sha256:faa69bab58ed0936f0ccf96c99b92369b7a1819305d37dfe5c927d21a437a09d
+requests==2.19.1 \
+    --hash=sha256:63b52e3c866428a224f97cab011de738c36aec0185aa91cfacd418b5d58911d1 \
+    --hash=sha256:ec22d826a36ed72a7358ff3fe56cbd4ba69dd7a6718ffd450ff0e9df7a47ce6a

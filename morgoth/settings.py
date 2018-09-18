@@ -33,8 +33,7 @@ class Settings(object):
         if not self.get('gpg.fingerprint'):
             raise GPGImproperlyConfigured()
 
-        return gnupg.GPG(binary=self.get('gpg.binary'), homedir=self.get('gpg.homedir'),
-                         use_agent=True)
+        return gnupg.GPG(gnupghome=self.get('gpg.homedir'), use_agent=True)
 
     @staticmethod
     def _parse_key(key):

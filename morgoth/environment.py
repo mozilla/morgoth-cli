@@ -1,19 +1,54 @@
-import base64
 import os
 
-from urllib.error import URLError, HTTPError
-from urllib.request import Request, urlopen
+import requests
+
+from urllib.parse import urljoin
 
 
 class Environment(object):
-    url = None
-    username = None
-    password = None
+    _url = None
+    _username = None
+    _password = None
 
     def __init__(self, url, **kwargs):
-        self.url = self._normalize_url(url)
+        self.session = requests.Session()
+        self.session.headers.update({'Accept': 'application/json'})
+
+        self.url = url
         self.username = kwargs.get('username', None)
         self.password = kwargs.get('password', None)
+
+        self._reconfigure_session()
+
+    def _reconfigure_session(self):
+        self.session.auth = (self.username, self.password)
+
+    @property
+    def url(self):
+        return self._url
+
+    @url.setter
+    def url(self, value):
+        self._url = value
+        self._reconfigure_session()
+
+    @property
+    def username(self):
+        return self._username
+
+    @username.setter
+    def username(self, value):
+        self._username = value
+        self._reconfigure_session()
+
+    @property
+    def password(self):
+        return self._password
+
+    @password.setter
+    def password(self, value):
+        self._password = value
+        self._reconfigure_session()
 
     def __eq__(self, other):
         return isinstance(other, self.__class__) and self.url == other.url
@@ -23,35 +58,32 @@ class Environment(object):
         with open(path, 'r') as f:
             return cls(f.read())
 
-    @staticmethod
-    def _normalize_url(url):
-        stripped = url.strip('\n\t\r /')
-        return '{}/'.format(stripped)
-
     def get_url(self, endpoint):
-        return '{}api/{}'.format(self.url, endpoint)
+        return urljoin(self.url, '{}/{}'.format('api', endpoint))
 
-    def request(self, endpoint, **kwargs):
-        request = Request(self.get_url(endpoint), **kwargs)
+    def request(self, endpoint, data=None):
+        url = self.get_url(endpoint)
 
-        if self.username and self.password:
-            auth = base64.encodebytes('{}:{}'.format(self.username, self.password).encode())
-            auth = auth.decode().replace('\n', '')
-            request.add_header('Authorization', 'Basic {}'.format(auth))
+        if data:
+            response = self.session.post(url, auth=(self.username, self.password), json=data,
+                                         timeout=5)
+        else:
+            response = self.session.get(url, auth=(self.username, self.password), timeout=5)
 
-        return urlopen(request)
+        response.raise_for_status()
+
+        return response
+
+    def fetch(self, endpoint, **kwargs):
+        response = self.request(endpoint, **kwargs)
+        return response.json()
 
     def validate(self):
-        try:
-            response = self.request('rules')
-        except HTTPError as err:
-            if err.code == 401:
-                raise
-            return False
-        except (URLError, ValueError):
-            return False
+        response = self.request('rules')
+        return response.status_code == 200 and response.headers['content-type']
 
-        return response.code == 200 and response.getheader('Content-Type') == 'application/json'
+    def csrf(self):
+        return self.request('csrf_token').headers['x-csrf-token']
 
     def save(self, path):
         os.makedirs(os.path.dirname(path), exist_ok=True)

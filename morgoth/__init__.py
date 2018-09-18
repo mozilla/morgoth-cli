@@ -1,11 +1,9 @@
 import base64
 import os
 
-
-BASE_PATH = os.getcwd()
-MORGOTH_PATH = os.path.join(BASE_PATH, '.morgoth')
-ENVIRONMENT_PATH = os.path.join(MORGOTH_PATH, 'env')
-CONFIG_PATH = os.path.join(MORGOTH_PATH, 'config')
+HOME_DIR = os.path.expanduser('~')
+CONFIG_PATH = os.path.join(HOME_DIR, '.morgoth_config')
+GPG_HOMEDIR_DEFAULT = os.path.join(HOME_DIR, '.gnupg')
 
 STATUS_5H17 = base64.b64decode(
     b'CiAgICAgKCAgICkKICAoICAgKSAoCiAgICkgXyAgICkKIC'

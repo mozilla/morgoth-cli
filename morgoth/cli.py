@@ -2,18 +2,46 @@ import os
 import json
 import tempfile
 
+from datetime import datetime
 from hashlib import sha256
 
 import boto3
 import click
 
 from colorama import Fore, Style
+from requests.exceptions import HTTPError, Timeout
 
-from morgoth import CONFIG_PATH, ENVIRONMENT_PATH, STATUS_5H17
+from morgoth import CONFIG_PATH, GPG_HOMEDIR_DEFAULT, STATUS_5H17
 from morgoth.environment import Environment
 from morgoth.settings import GPGImproperlyConfigured, settings
-from morgoth.utils import output, validate_environment
+from morgoth.utils import output
 from morgoth.xpi import XPI
+
+
+DEFAULT_BALROG_URL = 'https://aus4-admin.mozilla.org/'
+DEFAULT_AWS_BASE_URL = 'https://ftp.mozilla.org/'
+DEFAULT_AWS_BUCKET_NAME = 'net-mozaws-prod-delivery-archive'
+DEFAULT_AWS_PREFIX = 'pub/system-addons/'
+
+
+def validate_credentials(**kwargs):
+    environment = Environment(
+        kwargs.get('url', settings.get('balrog_url')),
+        username=kwargs.get('username', settings.get('username')),
+        password=kwargs.get('password', settings.get('password', decrypt=True)))
+
+    try:
+        environment.validate()
+    except Timeout:
+        output('Timeout while attempting to connect. Check VPN.', Fore.RED)
+        exit(1)
+    except HTTPError as err:
+        if err.response.status_code == 401:
+            output('Invalid Balrog credentials.', Fore.RED)
+            exit(1)
+        raise
+
+    return environment
 
 
 @click.group()
@@ -22,52 +50,39 @@ def cli():
 
 
 @cli.command()
-@click.option('--environment', '-e', default=None)
-@click.option('--username', '-u', default=None)
 @click.pass_context
-def init(ctx, environment, username):
-    """Initialize a Morgoth repository."""
-    curr_env = None
-    if os.path.exists(ENVIRONMENT_PATH):
-        output('A repo has already been initialized in this directory.')
-        curr_env = Environment.from_file(ENVIRONMENT_PATH)
+def init(ctx):
+    """Initialize Morgoth."""
+    url = click.prompt('Balrog URL', settings.get('balrog_url', DEFAULT_BALROG_URL))
+    username = click.prompt('Username', default=settings.get('username', ''))
+
+    if username == '':
+        username = None
 
     # Prompt for a password if a username is provided
     password = None
     if username:
         password = click.prompt('Password', hide_input=True)
 
-    if environment:
-        environment = Environment(environment, username=username, password=password)
-        is_valid, message = validate_environment(environment)
-        if not is_valid:
-            output(message)
-            exit(1)
+    output('Attempting to validate Balrog credentials...', Fore.BLUE)
+    validate_credentials(url=url, username=username, password=password)
 
-    while not environment:
-        url = click.prompt('Environment URL')
-        environment = Environment(url, username=username, password=password)
-        is_valid, message = validate_environment(environment)
-        if not is_valid:
-            output(message)
-            environment = None
+    gpg_homedir = None
+    gpg_fingerprint = None
+    if password:
+        gpg_homedir = click.prompt('GPG homedir', settings.get('gpg.homedir', GPG_HOMEDIR_DEFAULT))
+        gpg_fingerprint = click.prompt('Public key fingerprint', settings.get('gpg.fingerprint'))
 
-    if curr_env and environment != curr_env:
-        if not click.confirm('Would you like to replace the existing environment?'):
-            exit(1)
-    elif curr_env:
-        output('Environment was unchanged.')
+    # Create a settings file
+    settings.path = CONFIG_PATH
 
-    environment.save(ENVIRONMENT_PATH)
+    ctx.invoke(config, key='balrog_url', value=url)
 
     if username:
-        settings.path = CONFIG_PATH
-
-        if click.confirm('Do you want to save your username?'):
-            ctx.invoke(config, key='username', value=username)
-
-        if click.confirm('Do you want to save your password?'):
-            ctx.invoke(config, key='password', value=password)
+        ctx.invoke(config, key='username', value=username)
+        ctx.invoke(config, key='gpg.homedir', value=gpg_homedir)
+        ctx.invoke(config, key='gpg.fingerprint', value=gpg_fingerprint)
+        ctx.invoke(config, key='password', value=password)
 
 
 @cli.command()
@@ -76,16 +91,14 @@ def init(ctx, environment, username):
 def auth(ctx, username):
     """Update authentication settings."""
     if not username:
-        username = click.prompt('Username')
+        username = click.prompt('Username', settings.get('username'))
 
     password = None
     while not password:
         password = click.prompt('Password', hide_input=True)
-        confirm_password = click.prompt('Confirm Password', hide_input=True)
 
-        if password != confirm_password:
-            output('Passwords did not match. Try again.')
-            password = None
+    output('Attempting to validate Balrog credentials...', Fore.BLUE)
+    validate_credentials(username=username, password=password)
 
     ctx.invoke(config, key='username', value=username)
     ctx.invoke(config, key='password', value=password)
@@ -117,7 +130,7 @@ def config(key, value, delete, list):
         try:
             settings.set(key, value)
         except GPGImproperlyConfigured:
-            output('GPG settings improperly configured.')
+            output('GPG settings improperly configured.', Fore.RED)
             exit(1)
 
     settings.save()
@@ -142,7 +155,7 @@ def make():
 @click.argument('xpi_file')
 def make_release(xpi_file, profile):
     """Make a new release from an XPI file."""
-    prefix = settings.get('aws.prefix')
+    prefix = settings.get('aws.prefix', DEFAULT_AWS_PREFIX)
 
     try:
         xpi = XPI(xpi_file)
@@ -164,7 +177,7 @@ def make_release(xpi_file, profile):
 
         session = boto3.Session(profile_name=profile)
         s3 = session.resource('s3')
-        bucket = s3.Bucket(settings.get('aws.bucket_name'))
+        bucket = s3.Bucket(settings.get('aws.bucket_name', DEFAULT_AWS_BUCKET_NAME))
 
         exists = False
         for obj in bucket.objects.filter(Prefix=prefix):
@@ -192,21 +205,36 @@ def make_release(xpi_file, profile):
                 bucket.put_object(Key=xpi.get_ftp_path(prefix), Body=data)
                 output('XPI uploaded successfully.', Fore.GREEN)
 
-        json_path = 'releases/{}.json'.format(xpi.release_name)
+        release_data = xpi.generate_release_data(
+            settings.get('aws.base_url', DEFAULT_AWS_BASE_URL), prefix)
 
-        if os.path.exists(json_path):
-            output('Release JSON file already exists.', Fore.YELLOW)
-            if not click.confirm('Replace existing release JSON file?'):
-                output('Aborting.', Fore.RED)
-                exit(1)
+        if click.confirm('Upload release to Balrog?'):
+            environment = validate_credentials()
 
-        output('Saving to: {}{}'.format(Style.BRIGHT, json_path))
+            environment.request('releases', data={
+                'blob': json.dumps(release_data),
+                'name': xpi.release_name,
+                'product': 'SystemAddons',
+                'csrf_token': environment.csrf(),
+            })
 
-        os.makedirs('releases', exist_ok=True)
-        with open(json_path, 'w') as f:
-            f.write(json.dumps(
-                xpi.generate_release_data(settings.get('aws.base_url'), prefix),
-                indent=2, sort_keys=True))
+            output('Uploaded: {}'.format(xpi.release_name))
+        elif click.confirm('Save release to file?'):
+            json_path = 'releases/{}.json'.format(xpi.release_name)
+
+            if os.path.exists(json_path):
+                output('Release JSON file already exists.', Fore.YELLOW)
+                if not click.confirm('Replace existing release JSON file?'):
+                    output('Aborting.', Fore.RED)
+                    exit(1)
+
+            output('Saving to: {}{}'.format(Style.BRIGHT, json_path))
+
+            os.makedirs('releases', exist_ok=True)
+            with open(json_path, 'w') as f:
+                f.write(json.dumps(release_data, indent=2, sort_keys=True))
+        else:
+            output(json.dumps(release_data, indent=2, sort_keys=True))
 
     output('')
 
@@ -218,13 +246,16 @@ def make_superblob(releases):
     names = []
 
     for release in releases:
-        with open(release, 'r') as f:
-            release_data = json.loads(f.read())
-        short_name = release_data['name'].split('@')[0]
-        for k in release_data['addons']:
-            if k.startswith(short_name):
-                version = release_data['addons'][k]['version']
-        names.append(release_data['name'])
+        if os.path.exists(release):
+            with open(release, 'r') as f:
+                release_data = json.loads(f.read())
+            short_name = release_data['name'].split('@')[0]
+            for k in release_data['addons']:
+                if k.startswith(short_name):
+                    version = release_data['addons'][k]['version']
+            names.append(release_data['name'])
+        else:
+            names.append(release)
 
     if not len(names):
         output('No releases specified.', Fore.RED)
@@ -241,11 +272,100 @@ def make_superblob(releases):
       'schema_version': 4000
     }
 
-    sb_path = 'releases/superblobs/{}.json'.format(sb_name)
-    os.makedirs('releases/superblobs', exist_ok=True)
-    with open(sb_path, 'w') as f:
-        f.write(json.dumps(sb_data, indent=2, sort_keys=True))
+    if click.confirm('Upload release to Balrog?'):
+        environment = validate_credentials()
 
-    output('Saving to: {}{}'.format(Style.BRIGHT, sb_path))
+        environment.request('releases', data={
+            'blob': json.dumps(sb_data),
+            'name': sb_name,
+            'product': 'SystemAddons',
+            'csrf_token': environment.csrf(),
+        })
+
+        output('Uploaded: {}'.format(sb_name))
+    elif click.confirm('Save release to file?'):
+        sb_path = 'releases/superblobs/{}.json'.format(sb_name)
+        os.makedirs('releases/superblobs', exist_ok=True)
+        with open(sb_path, 'w') as f:
+            f.write(json.dumps(sb_data, indent=2, sort_keys=True))
+
+        output('Saving to: {}{}'.format(Style.BRIGHT, sb_path))
+    else:
+        output(json.dumps(sb_data, indent=2, sort_keys=True))
 
     output('')
+
+
+@cli.command()
+@click.argument('release')
+@click.argument('rule_ids', nargs=-1)
+def add_release_to_rule(release, rule_ids):
+    environment = validate_credentials()
+
+    for rule_id in rule_ids:
+        # Fetch existing rule
+        rule = environment.fetch(f'rules/{rule_id}')
+
+        # Fetch release for rule
+        superblob = environment.fetch(f'releases/{rule["mapping"]}')
+
+        # Construct new superblob with release
+        if release not in superblob['blobs']:
+            superblob['blobs'].append(release)
+        name_hash = sha256('-'.join(superblob['blobs']).encode()).hexdigest()
+        superblob['name'] = f'Superblob-{name_hash}'
+
+        # Check if the superblob already exists
+        create_release = True
+        try:
+            environment.request(f'releases/{superblob["name"]}')
+        except HTTPError as err:
+            if err.response.status_code != 404:
+                raise
+
+        # Check if the mapping is already set
+        update_mapping = rule['mapping'] != superblob['name']
+
+        # Confirm changes
+        if create_release:
+            output(f'Will add new release {superblob["name"]}:')
+            output('{}\n'.format(json.dumps(superblob, indent=2)))
+
+        if update_mapping:
+            output(
+                f'Will modify rule {rule_id} (channel: {rule["channel"]}, version: '
+                f'{rule["version"]}) from mapping:\n{rule["mapping"]}\nto '
+                f'mapping\n{superblob["name"]}\n'
+            )
+
+        if update_mapping or create_release:
+            if not click.confirm('Apply these changes?'):
+                output('Aborted!')
+                exit(1)
+        else:
+            output(f'Skipping rule {rule_id}, nothing to change.')
+            continue
+
+        csrf_token = environment.csrf()
+
+        # Create release
+        if create_release:
+            environment.request('releases', data={
+                'blob': json.dumps(superblob),
+                'name': superblob['name'],
+                'product': 'SystemAddons',
+                'csrf_token': csrf_token,
+            })
+
+        # Save new mapping to rule
+        if update_mapping:
+            ts_now = int(datetime.now().timestamp() * 1000)
+            rule['mapping'] = superblob['name']
+            environment.request('scheduled_changes/rules', data={
+                **rule,
+                'when': ts_now + 5 * 60 * 1000,  # in five minutes
+                'change_type': 'update',
+                'csrf_token': csrf_token,
+            })
+
+    output('Done!', Fore.GREEN)

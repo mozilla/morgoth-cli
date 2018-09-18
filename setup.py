@@ -11,7 +11,8 @@ setup(
         'boto3',
         'Click',
         'colorama',
-        'gnupg',
+        'python-gnupg',
+        'requests',
     ],
     entry_points={
         'console_scripts': [
