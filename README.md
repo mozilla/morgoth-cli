@@ -16,8 +16,8 @@ $ cd morgoth-cli
 $ pip install --editable .
 ```
 
-**Note:** You can leave out the `--editable` flag however you will
-then need to reinstall any time you update the repo.
+***Note:** You can leave out the `--editable` flag however you will
+then need to reinstall any time you update the repo.*
 
 ### Configuration
 
@@ -26,6 +26,9 @@ To configure this tool simply run the following command:
 ```
 $ morgoth init
 ```
+
+***Note:** This command validates your authentication credentials and
+you will need to be connected to the VPN to successfully run it.*
 
 If you change your password/credentials at any point you can use 
 the `auth` command to make changes to your auth settings:
@@ -48,3 +51,24 @@ to use with the following:
 $ morgoth config aws.profile my-profile-name
 ```
 
+#### Configuration options
+
+`balrog_url`: The URL of the Balrog server to use.
+
+`username`: Your LDAP username.
+
+`password`: Your LDAP password. (Encrypted using GPG before it 
+is stored)
+
+`gpg.homedir`: The GPG homedir where your keys are stored.
+
+`gpg.fingerprint`: The fingerprint of the GPG key you would like 
+to use for encryption.
+
+`aws.profile`: The name of the AWS profile to use.
+
+`aws.prefix`: The prefix to be added to the filename in the S3 bucket.
+
+`aws.bucket_name`: The name of the S3 bucket to use.
+
+`aws.base_url`: The base public URL for the S3 bucket.
