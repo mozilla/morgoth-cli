@@ -18,3 +18,33 @@ $ pip install --editable .
 
 **Note:** You can leave out the `--editable` flag however you will
 then need to reinstall any time you update the repo.
+
+### Configuration
+
+To configure this tool simply run the following command:
+
+```
+$ morgoth init
+```
+
+If you change your password/credentials at any point you can use 
+the `auth` command to make changes to your auth settings:
+
+```
+$ morgoth auth
+```
+
+Additionally if you need to change any other configurations you
+can simply run:
+
+```
+$ morgoth config [KEY] [VALUE]
+```
+
+For example if you use AWS profile you can configure the profile
+to use with the following:
+
+```
+$ morgoth config aws.profile my-profile-name
+```
+
