@@ -122,7 +122,8 @@ how sign-offs are handled on live channels. The changes are scheduled
 for 5 seconds in the future so they should take effect immediately after
 any required sign-offs are received.
 
-### Go Faster Process
+### Related documentation
 
-Review the wiki page for the 
-[Go Faster release process](https://wiki.mozilla.org/Firefox/Go_Faster/System_Add-ons/Process).
+- [Go Faster process](https://wiki.mozilla.org/Firefox/Go_Faster/System_Add-ons/Process).
+- [Balrog Wiki](https://wiki.mozilla.org/Balrog)
+- [Balrog documentation](https://mozilla-balrog.readthedocs.io/en/latest/index.html)
