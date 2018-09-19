@@ -72,3 +72,52 @@ to use for encryption.
 `aws.bucket_name`: The name of the S3 bucket to use.
 
 `aws.base_url`: The base public URL for the S3 bucket.
+
+
+### Usage
+
+##### Make releases:
+
+```
+$ morgoth make release [PATH_TO_XPI]
+```
+
+This command is used to create a new release from an XPI file. It will 
+check if the XPI has been uploaded to S3 and if not upload it for you 
+with the correctly formatted file name.
+
+It will then give you the option to directly upload the release to 
+Balrog, or save it to a file, or simply output it to stdout.
+
+##### Make superblobs:
+
+```
+$ morgoth make superblob [RELEASES] 
+```
+
+A superblob is a type of release that represents a group of releases.
+
+The releases passed to this command may either be the name of a release
+or the path to a JSON file with the data for a release.
+
+It will then give you the option to directly upload the release to 
+Balrog, or save it to a file, or simply output it to stdout.
+
+##### Modify rules:
+
+```
+$ morgoth modify rules [RULES]
+```
+
+This command lets you modify one or more rules.
+
+The `--add` option allows you to add a release to each of the rules if 
+it does not already exist.
+
+The `--remove` option allows you to remove a release from each of the
+rules, if it exists.
+
+The rule changes are added to Balrog as "Scheduled Changes" as this is
+how sign-offs are handled on live channels. The changes are scheduled
+for 5 seconds in the future so they should take effect immediately after
+any required sign-offs are received.
