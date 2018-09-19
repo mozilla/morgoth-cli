@@ -218,7 +218,7 @@ def make_release(xpi_file, profile):
                 'csrf_token': environment.csrf(),
             })
 
-            output('Uploaded: {}'.format(xpi.release_name))
+            output('Uploaded: {}{}'.format(Style.BRIGHT, xpi.release_name))
         elif click.confirm('Save release to file?'):
             json_path = 'releases/{}.json'.format(xpi.release_name)
 
@@ -275,14 +275,21 @@ def make_superblob(releases):
     if click.confirm('Upload release to Balrog?'):
         environment = validate_credentials()
 
-        environment.request('releases', data={
-            'blob': json.dumps(sb_data),
-            'name': sb_name,
-            'product': 'SystemAddons',
-            'csrf_token': environment.csrf(),
-        })
+        try:
+            environment.request('releases', data={
+                'blob': json.dumps(sb_data),
+                'name': sb_name,
+                'product': 'SystemAddons',
+                'csrf_token': environment.csrf(),
+            })
+        except HTTPError as err:
+            response_data = err.response.json()
+            output('Upload failed!', Fore.RED)
+            if 'data' in response_data:
+                output(response_data.get('data'), Fore.RED)
+            exit(1)
 
-        output('Uploaded: {}'.format(sb_name))
+        output('Uploaded: {}{}'.format(Style.BRIGHT, sb_name))
     elif click.confirm('Save release to file?'):
         sb_path = 'releases/superblobs/{}.json'.format(sb_name)
         os.makedirs('releases/superblobs', exist_ok=True)
