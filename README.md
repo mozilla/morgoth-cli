@@ -121,3 +121,8 @@ The rule changes are added to Balrog as "Scheduled Changes" as this is
 how sign-offs are handled on live channels. The changes are scheduled
 for 5 seconds in the future so they should take effect immediately after
 any required sign-offs are received.
+
+### Go Faster Process
+
+Review the wiki page for the 
+[Go Faster release process](https://wiki.mozilla.org/Firefox/Go_Faster/System_Add-ons/Process).
