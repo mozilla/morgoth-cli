@@ -24,7 +24,7 @@ DEFAULT_AWS_BUCKET_NAME = 'net-mozaws-prod-delivery-archive'
 DEFAULT_AWS_PREFIX = 'pub/system-addons/'
 
 
-def validate_credentials(**kwargs):
+def get_validated_environment(**kwargs):
     environment = Environment(
         kwargs.get('url', settings.get('balrog_url')),
         username=kwargs.get('username', settings.get('username')),
@@ -65,7 +65,7 @@ def init(ctx):
         password = click.prompt('Password', hide_input=True)
 
     output('Attempting to validate Balrog credentials...', Fore.BLUE)
-    validate_credentials(url=url, username=username, password=password)
+    get_validated_environment(url=url, username=username, password=password)
 
     gpg_homedir = None
     gpg_fingerprint = None
@@ -98,7 +98,7 @@ def auth(ctx, username):
         password = click.prompt('Password', hide_input=True)
 
     output('Attempting to validate Balrog credentials...', Fore.BLUE)
-    validate_credentials(username=username, password=password)
+    get_validated_environment(username=username, password=password)
 
     ctx.invoke(config, key='username', value=username)
     ctx.invoke(config, key='password', value=password)
@@ -209,7 +209,7 @@ def make_release(xpi_file, profile):
             settings.get('aws.base_url', DEFAULT_AWS_BASE_URL), prefix)
 
         if click.confirm('Upload release to Balrog?'):
-            environment = validate_credentials()
+            environment = get_validated_environment()
 
             environment.request('releases', data={
                 'blob': json.dumps(release_data),
@@ -273,7 +273,7 @@ def make_superblob(releases):
     }
 
     if click.confirm('Upload release to Balrog?'):
-        environment = validate_credentials()
+        environment = get_validated_environment()
 
         try:
             environment.request('releases', data={
@@ -303,11 +303,29 @@ def make_superblob(releases):
     output('')
 
 
-@cli.command()
-@click.argument('release')
+@cli.group()
+def modify():
+    """Modify an object"""
+    pass
+
+
+@modify.command('rules')
 @click.argument('rule_ids', nargs=-1)
-def add_release_to_rule(release, rule_ids):
-    environment = validate_credentials()
+@click.option('--add', '-a', help='Add a release to the rules.')
+@click.option('--remove', '-r', help='Remove a release from the rules.')
+def modify_rules(rule_ids, add, remove):
+    """Modify rules."""
+    environment = get_validated_environment()
+
+    # Fetch a list of all releases
+    data = environment.request('releases').json()
+    releases = data.get('releases', [])
+    release_names = [r.get('name') for r in releases if r.get('product') == 'SystemAddons']
+
+    # Validate release to be added
+    if add and add not in release_names:
+        output('The release you are trying to add does not exist.', Fore.RED)
+        exit(1)
 
     for rule_id in rule_ids:
         # Fetch existing rule
@@ -317,18 +335,16 @@ def add_release_to_rule(release, rule_ids):
         superblob = environment.fetch(f'releases/{rule["mapping"]}')
 
         # Construct new superblob with release
-        if release not in superblob['blobs']:
-            superblob['blobs'].append(release)
+        if add and add not in superblob['blobs']:
+            superblob['blobs'].append(add)
+        if remove and remove in superblob['blobs']:
+            superblob['blobs'].remove(remove)
+        superblob['blobs'].sort()
         name_hash = sha256('-'.join(superblob['blobs']).encode()).hexdigest()
         superblob['name'] = f'Superblob-{name_hash}'
 
         # Check if the superblob already exists
-        create_release = True
-        try:
-            environment.request(f'releases/{superblob["name"]}')
-        except HTTPError as err:
-            if err.response.status_code != 404:
-                raise
+        create_release = superblob['name'] not in release_names
 
         # Check if the mapping is already set
         update_mapping = rule['mapping'] != superblob['name']
@@ -336,43 +352,57 @@ def add_release_to_rule(release, rule_ids):
         # Confirm changes
         if create_release:
             output(f'Will add new release {superblob["name"]}:')
-            output('{}\n'.format(json.dumps(superblob, indent=2)))
+            output('{}\n'.format(json.dumps(superblob, indent=2)), Style.BRIGHT)
 
         if update_mapping:
-            output(
-                f'Will modify rule {rule_id} (channel: {rule["channel"]}, version: '
-                f'{rule["version"]}) from mapping:\n{rule["mapping"]}\nto '
-                f'mapping\n{superblob["name"]}\n'
-            )
+            output(f'Will modify: {Style.BRIGHT}Rule {rule_id} '
+                   f'(channel: {rule["channel"]}, version: {rule["version"]})')
+            output(f'From mapping: {Style.BRIGHT}{rule["mapping"]}')
+            output(f'To mapping: {Style.BRIGHT}{superblob["name"]}\n')
 
         if update_mapping or create_release:
             if not click.confirm('Apply these changes?'):
                 output('Aborted!')
                 exit(1)
         else:
-            output(f'Skipping rule {rule_id}, nothing to change.')
+            output(f'Skipping rule {rule_id}, nothing to change.', Fore.YELLOW)
             continue
 
         csrf_token = environment.csrf()
 
         # Create release
         if create_release:
-            environment.request('releases', data={
-                'blob': json.dumps(superblob),
-                'name': superblob['name'],
-                'product': 'SystemAddons',
-                'csrf_token': csrf_token,
-            })
+            try:
+                environment.request('releases', data={
+                    'blob': json.dumps(superblob),
+                    'name': superblob['name'],
+                    'product': 'SystemAddons',
+                    'csrf_token': csrf_token,
+                })
+            except HTTPError as err:
+                response_data = err.response.json()
+                output('Unable to create new release!', Fore.RED)
+                if 'data' in response_data:
+                    output(response_data.get('data'), Fore.RED)
+                exit(1)
+            release_names.append(superblob['name'])
 
         # Save new mapping to rule
         if update_mapping:
             ts_now = int(datetime.now().timestamp() * 1000)
             rule['mapping'] = superblob['name']
-            environment.request('scheduled_changes/rules', data={
-                **rule,
-                'when': ts_now + 5 * 60 * 1000,  # in five minutes
-                'change_type': 'update',
-                'csrf_token': csrf_token,
-            })
+            try:
+                environment.request('scheduled_changes/rules', data={
+                    **rule,
+                    'when': ts_now + (5 * 1000),  # in five seconds
+                    'change_type': 'update',
+                    'csrf_token': csrf_token,
+                })
+            except HTTPError as err:
+                response_data = err.response.json()
+                output('Unable to update rule!', Fore.RED)
+                if 'data' in response_data:
+                    output(response_data.get('data'), Fore.RED)
+                exit(1)
 
     output('Done!', Fore.GREEN)
