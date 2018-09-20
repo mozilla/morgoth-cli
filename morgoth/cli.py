@@ -249,10 +249,6 @@ def make_superblob(releases):
         if os.path.exists(release):
             with open(release, 'r') as f:
                 release_data = json.loads(f.read())
-            short_name = release_data['name'].split('@')[0]
-            for k in release_data['addons']:
-                if k.startswith(short_name):
-                    version = release_data['addons'][k]['version']
             names.append(release_data['name'])
         else:
             names.append(release)
