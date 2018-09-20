@@ -1,6 +1,6 @@
 import base64
 import configparser
-import gnupg
+from pretty_bad_protocol import gnupg
 
 from morgoth import CONFIG_PATH
 
@@ -37,8 +37,8 @@ class Settings(object):
         if not self.get('gpg.fingerprint'):
             raise GPGImproperlyConfigured()
 
-        return gnupg.GPG(gpgbinary=self.get('gpg.binary', 'gpg'),
-                         gnupghome=self.get('gpg.homedir'), use_agent=True)
+        return gnupg.GPG(binary=self.get('gpg.binary', 'gpg'),
+                         homedir=self.get('gpg.homedir'), use_agent=True)
 
     @staticmethod
     def _parse_key(key):
