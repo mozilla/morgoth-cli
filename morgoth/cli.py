@@ -40,7 +40,7 @@ def get_validated_environment(**kwargs):
             output('Invalid Balrog credentials.', Fore.RED)
             if kwargs.get('verbose'):
                 output('Error from server:')
-                output(json.dumps(err.response, indent=2))
+                output(json.dumps(err.response.json(), indent=2))
             exit(1)
         raise
 
