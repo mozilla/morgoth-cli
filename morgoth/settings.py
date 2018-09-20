@@ -9,6 +9,10 @@ class GPGImproperlyConfigured(Exception):
     pass
 
 
+class DecryptionError(Exception):
+    pass
+
+
 class Settings(object):
     _path = None
 
@@ -60,7 +64,9 @@ class Settings(object):
             return default
 
         if decrypt:
-            return self._decrypt(value)
+            decrypted = self._decrypt(value)
+            if not decrypted.ok:
+                raise DecryptionError(f'Could not decrypt setting {key}: {decrypted.status}')
         return value
 
     def _set(self, key, value):

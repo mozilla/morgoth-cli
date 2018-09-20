@@ -13,7 +13,7 @@ from requests.exceptions import HTTPError, Timeout
 
 from morgoth import CONFIG_PATH, GPG_HOMEDIR_DEFAULT, STATUS_5H17
 from morgoth.environment import Environment
-from morgoth.settings import GPGImproperlyConfigured, settings
+from morgoth.settings import DecryptionError, GPGImproperlyConfigured, settings
 from morgoth.utils import output
 from morgoth.xpi import XPI
 
@@ -25,10 +25,14 @@ DEFAULT_AWS_PREFIX = 'pub/system-addons/'
 
 
 def get_validated_environment(**kwargs):
-    environment = Environment(
-        kwargs.get('url', settings.get('balrog_url')),
-        username=kwargs.get('username', settings.get('username')),
-        password=kwargs.get('password', settings.get('password', decrypt=True)))
+    try:
+        environment = Environment(
+            kwargs.get('url', settings.get('balrog_url')),
+            username=kwargs.get('username', settings.get('username')),
+            password=kwargs.get('password', settings.get('password', decrypt=True)))
+    except DecryptionError as e:
+        output(str(e), Fore.RED)
+        exit(1)
 
     try:
         environment.validate()
