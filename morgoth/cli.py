@@ -38,6 +38,9 @@ def get_validated_environment(**kwargs):
     except HTTPError as err:
         if err.response.status_code == 401:
             output('Invalid Balrog credentials.', Fore.RED)
+            if kwargs.get('verbose'):
+                output('Error from server:')
+                output(json.dumps(err.response, indent=2))
             exit(1)
         raise
 
@@ -87,8 +90,9 @@ def init(ctx):
 
 @cli.command()
 @click.option('--username', '-u', default=None)
+@click.option('--verbose', '-v', is_flag=True)
 @click.pass_context
-def auth(ctx, username):
+def auth(ctx, username, verbose):
     """Update authentication settings."""
     if not username:
         username = click.prompt('Username', settings.get('username'))
@@ -98,7 +102,7 @@ def auth(ctx, username):
         password = click.prompt('Password', hide_input=True)
 
     output('Attempting to validate Balrog credentials...', Fore.BLUE)
-    get_validated_environment(username=username, password=password)
+    get_validated_environment(username=username, password=password, verbose=verbose)
 
     ctx.invoke(config, key='username', value=username)
     ctx.invoke(config, key='password', value=password)
@@ -152,8 +156,9 @@ def make():
 
 @make.command('release')
 @click.option('--profile', default=settings.get('aws.profile'))
+@click.option('--verbose', '-v', is_flag=True)
 @click.argument('xpi_file')
-def make_release(xpi_file, profile):
+def make_release(xpi_file, profile, verbose):
     """Make a new release from an XPI file."""
     prefix = settings.get('aws.prefix', DEFAULT_AWS_PREFIX)
 
@@ -209,7 +214,7 @@ def make_release(xpi_file, profile):
             settings.get('aws.base_url', DEFAULT_AWS_BASE_URL), prefix)
 
         if click.confirm('Upload release to Balrog?'):
-            environment = get_validated_environment()
+            environment = get_validated_environment(verbose=verbose)
 
             environment.request('releases', data={
                 'blob': json.dumps(release_data),
@@ -240,8 +245,9 @@ def make_release(xpi_file, profile):
 
 
 @make.command('superblob')
+@click.option('--verbose', '-v', is_flag=True)
 @click.argument('releases', nargs=-1)
-def make_superblob(releases):
+def make_superblob(releases, verbose):
     """Make a new superblob from releases."""
     names = []
 
@@ -269,7 +275,7 @@ def make_superblob(releases):
     }
 
     if click.confirm('Upload release to Balrog?'):
-        environment = get_validated_environment()
+        environment = get_validated_environment(verbose=verbose)
 
         try:
             environment.request('releases', data={
@@ -309,9 +315,10 @@ def modify():
 @click.argument('rule_ids', nargs=-1)
 @click.option('--add', '-a', help='Add a release to the rules.')
 @click.option('--remove', '-r', help='Remove a release from the rules.')
-def modify_rules(rule_ids, add, remove):
+@click.option('--verbose', '-v', is_flag=True)
+def modify_rules(rule_ids, add, remove, verbose):
     """Modify rules."""
-    environment = get_validated_environment()
+    environment = get_validated_environment(verbose=verbose)
 
     # Fetch a list of all releases
     data = environment.request('releases').json()
