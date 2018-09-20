@@ -1,11 +1,15 @@
 import base64
 import configparser
-import gnupg
+from pretty_bad_protocol import gnupg
 
 from morgoth import CONFIG_PATH
 
 
 class GPGImproperlyConfigured(Exception):
+    pass
+
+
+class DecryptionError(Exception):
     pass
 
 
@@ -33,8 +37,8 @@ class Settings(object):
         if not self.get('gpg.fingerprint'):
             raise GPGImproperlyConfigured()
 
-        return gnupg.GPG(gpgbinary=self.get('gpg.binary', 'gpg'),
-                         gnupghome=self.get('gpg.homedir'), use_agent=True)
+        return gnupg.GPG(binary=self.get('gpg.binary', 'gpg'),
+                         homedir=self.get('gpg.homedir'), use_agent=True)
 
     @staticmethod
     def _parse_key(key):
@@ -60,7 +64,9 @@ class Settings(object):
             return default
 
         if decrypt:
-            return self._decrypt(value)
+            decrypted = self._decrypt(value)
+            if not decrypted.ok:
+                raise DecryptionError(f'Could not decrypt setting {key}: {decrypted.status}')
         return value
 
     def _set(self, key, value):

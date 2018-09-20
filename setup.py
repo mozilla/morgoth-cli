@@ -11,7 +11,7 @@ setup(
         'boto3',
         'Click',
         'colorama',
-        'python-gnupg',
+        'pretty-bad-protocol',
         'requests',
     ],
     entry_points={
