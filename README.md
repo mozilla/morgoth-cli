@@ -60,6 +60,8 @@ $ morgoth config aws.profile my-profile-name
 `password`: Your LDAP password. (Encrypted using GPG before it 
 is stored)
 
+`gpg.binary`: The path to the GPG binary to use.
+
 `gpg.homedir`: The GPG homedir where your keys are stored.
 
 `gpg.fingerprint`: The fingerprint of the GPG key you would like 
