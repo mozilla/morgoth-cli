@@ -27,11 +27,8 @@ To configure this tool simply run the following command:
 $ morgoth init
 ```
 
-***Note:** This command validates your authentication credentials and
-you will need to be connected to the VPN to successfully run it.*
-
-If you change your password/credentials at any point you can use 
-the `auth` command to make changes to your auth settings:
+If you plan on running multiple commands you may find it useful to
+store a bearer token by running:
 
 ```
 $ morgoth auth
@@ -54,18 +51,6 @@ $ morgoth config aws.profile my-profile-name
 #### Configuration options
 
 `balrog_url`: The URL of the Balrog server to use.
-
-`username`: Your LDAP username.
-
-`password`: Your LDAP password. (Encrypted using GPG before it 
-is stored)
-
-`gpg.binary`: The path to the GPG binary to use.
-
-`gpg.homedir`: The GPG homedir where your keys are stored.
-
-`gpg.fingerprint`: The fingerprint of the GPG key you would like 
-to use for encryption.
 
 `aws.profile`: The name of the AWS profile to use.
 
