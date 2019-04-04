@@ -11,9 +11,9 @@ import click
 from colorama import Fore, Style
 from requests.exceptions import HTTPError, Timeout
 
-from morgoth import CONFIG_PATH, GPG_HOMEDIR_DEFAULT, STATUS_5H17
+from morgoth import CONFIG_PATH, STATUS_5H17
 from morgoth.environment import Environment
-from morgoth.settings import DecryptionError, GPGImproperlyConfigured, settings
+from morgoth.settings import settings
 from morgoth.utils import output
 from morgoth.xpi import XPI
 
@@ -25,14 +25,9 @@ DEFAULT_AWS_PREFIX = 'pub/system-addons/'
 
 
 def get_validated_environment(**kwargs):
-    try:
-        environment = Environment(
-            kwargs.get('url', settings.get('balrog_url')),
-            username=kwargs.get('username', settings.get('username')),
-            password=kwargs.get('password', settings.get('password', decrypt=True)))
-    except DecryptionError as e:
-        output(str(e), Fore.RED)
-        exit(1)
+    environment = Environment(
+        kwargs.get('url', settings.get('balrog_url')),
+        bearer_token=kwargs.get('bearer_token', settings.get('bearer_token')))
 
     try:
         environment.validate()
@@ -41,7 +36,7 @@ def get_validated_environment(**kwargs):
         exit(1)
     except HTTPError as err:
         if err.response.status_code == 401:
-            output('Invalid Balrog credentials.', Fore.RED)
+            output('Invalid bearer token.', Fore.RED)
             if kwargs.get('verbose'):
                 output('Error from server:')
                 output(json.dumps(err.response.json(), indent=2))
@@ -61,55 +56,26 @@ def cli():
 def init(ctx):
     """Initialize Morgoth."""
     url = click.prompt('Balrog URL', settings.get('balrog_url', DEFAULT_BALROG_URL))
-    username = click.prompt('Username', default=settings.get('username', ''))
-
-    if username == '':
-        username = None
-
-    # Prompt for a password if a username is provided
-    password = None
-    if username:
-        password = click.prompt('Password', hide_input=True)
-
-    output('Attempting to validate Balrog credentials...', Fore.BLUE)
-    get_validated_environment(url=url, username=username, password=password)
-
-    gpg_homedir = None
-    gpg_fingerprint = None
-    if password:
-        gpg_homedir = click.prompt('GPG homedir', settings.get('gpg.homedir', GPG_HOMEDIR_DEFAULT))
-        gpg_fingerprint = click.prompt('Public key fingerprint', settings.get('gpg.fingerprint'))
 
     # Create a settings file
     settings.path = CONFIG_PATH
 
     ctx.invoke(config, key='balrog_url', value=url)
 
-    if username:
-        ctx.invoke(config, key='username', value=username)
-        ctx.invoke(config, key='gpg.homedir', value=gpg_homedir)
-        ctx.invoke(config, key='gpg.fingerprint', value=gpg_fingerprint)
-        ctx.invoke(config, key='password', value=password)
-
 
 @cli.command()
-@click.option('--username', '-u', default=None)
+@click.option('--bearer', '-b', default=None)
 @click.option('--verbose', '-v', is_flag=True)
 @click.pass_context
-def auth(ctx, username, verbose):
+def auth(ctx, bearer, verbose):
     """Update authentication settings."""
-    if not username:
-        username = click.prompt('Username', settings.get('username'))
-
-    password = None
-    while not password:
-        password = click.prompt('Password', hide_input=True)
+    if not bearer:
+        bearer = click.prompt('Bearer Token')
 
     output('Attempting to validate Balrog credentials...', Fore.BLUE)
-    get_validated_environment(username=username, password=password, verbose=verbose)
+    get_validated_environment(bearer_token=bearer, verbose=verbose)
 
-    ctx.invoke(config, key='username', value=username)
-    ctx.invoke(config, key='password', value=password)
+    ctx.invoke(config, key='bearer_token', value=bearer)
 
 
 @cli.command()
@@ -135,11 +101,7 @@ def config(key, value, delete, list):
             output(settings.get(key))
             exit(0)
     elif key:
-        try:
-            settings.set(key, value)
-        except GPGImproperlyConfigured:
-            output('GPG settings improperly configured.', Fore.RED)
-            exit(1)
+        settings.set(key, value)
 
     settings.save()
 
@@ -159,10 +121,11 @@ def make():
 
 
 @make.command('release')
+@click.option('--bearer', '-b', default=None)
 @click.option('--profile', default=settings.get('aws.profile'))
 @click.option('--verbose', '-v', is_flag=True)
 @click.argument('xpi_file')
-def make_release(xpi_file, profile, verbose):
+def make_release(xpi_file, bearer, profile, verbose):
     """Make a new release from an XPI file."""
     prefix = settings.get('aws.prefix', DEFAULT_AWS_PREFIX)
 
@@ -218,14 +181,28 @@ def make_release(xpi_file, profile, verbose):
             settings.get('aws.base_url', DEFAULT_AWS_BASE_URL), prefix)
 
         if click.confirm('Upload release to Balrog?'):
-            environment = get_validated_environment(verbose=verbose)
+            extra_kw = {}
+            if bearer:
+                extra_kw.update({"bearer_token": bearer})
+            environment = get_validated_environment(verbose=verbose, **extra_kw)
 
-            environment.request('releases', data={
+            try:
+                environment.request('releases', data={
                 'blob': json.dumps(release_data),
                 'name': xpi.release_name,
                 'product': 'SystemAddons',
                 'csrf_token': environment.csrf(),
             })
+            except HTTPError as err:
+                output(f'An error occured: HTTP {err.response.status_code}', Fore.RED)
+                if verbose:
+                    output('Request headers:')
+                    output(json.dumps(dict(err.request.headers), indent=2))
+                    output('Request body:')
+                    output(json.dumps(json.loads(err.request.body.decode()), indent=2))
+                    output('Error from server:')
+                    output(json.dumps(err.response.json(), indent=2))
+                exit(1)
 
             output('Uploaded: {}{}'.format(Style.BRIGHT, xpi.release_name))
         elif click.confirm('Save release to file?'):
@@ -249,9 +226,10 @@ def make_release(xpi_file, profile, verbose):
 
 
 @make.command('superblob')
+@click.option('--bearer', '-b', default=None)
 @click.option('--verbose', '-v', is_flag=True)
 @click.argument('releases', nargs=-1)
-def make_superblob(releases, verbose):
+def make_superblob(releases, bearer, verbose):
     """Make a new superblob from releases."""
     names = []
 
@@ -279,7 +257,10 @@ def make_superblob(releases, verbose):
     }
 
     if click.confirm('Upload release to Balrog?'):
-        environment = get_validated_environment(verbose=verbose)
+        extra_kw = {}
+        if bearer:
+            extra_kw.update({"bearer_token": bearer})
+        environment = get_validated_environment(verbose=verbose, **extra_kw)
 
         try:
             environment.request('releases', data={
@@ -289,10 +270,14 @@ def make_superblob(releases, verbose):
                 'csrf_token': environment.csrf(),
             })
         except HTTPError as err:
-            response_data = err.response.json()
-            output('Upload failed!', Fore.RED)
-            if 'data' in response_data:
-                output(response_data.get('data'), Fore.RED)
+            output(f'An error occured: HTTP {err.response.status_code}', Fore.RED)
+            if verbose:
+                output('Request headers:')
+                output(json.dumps(dict(err.request.headers), indent=2))
+                output('Request body:')
+                output(json.dumps(json.loads(err.request.body.decode()), indent=2))
+                output('Error from server:')
+                output(json.dumps(err.response.json(), indent=2))
             exit(1)
 
         output('Uploaded: {}{}'.format(Style.BRIGHT, sb_name))
@@ -318,10 +303,14 @@ def modify():
 @modify.command('rules')
 @click.argument('rule_ids', nargs=-1)
 @click.option('--add', '-a', help='Add a release to the rules.')
+@click.option('--bearer', '-b', default=None)
 @click.option('--remove', '-r', help='Remove a release from the rules.')
 @click.option('--verbose', '-v', is_flag=True)
-def modify_rules(rule_ids, add, remove, verbose):
+def modify_rules(rule_ids, add, bearer, remove, verbose):
     """Modify rules."""
+    extra_kw = {}
+    if bearer:
+        extra_kw.update({"bearer_token": bearer})
     environment = get_validated_environment(verbose=verbose)
 
     # Fetch a list of all releases
@@ -387,10 +376,15 @@ def modify_rules(rule_ids, add, remove, verbose):
                     'csrf_token': csrf_token,
                 })
             except HTTPError as err:
-                response_data = err.response.json()
-                output('Unable to create new release!', Fore.RED)
-                if 'data' in response_data:
-                    output(response_data.get('data'), Fore.RED)
+                output('Unable to create release', Fore.RED)
+                output(f'An error occured: HTTP {err.response.status_code}', Fore.RED)
+                if verbose:
+                    output('Request headers:')
+                    output(json.dumps(dict(err.request.headers), indent=2))
+                    output('Request body:')
+                    output(json.dumps(json.loads(err.request.body.decode()), indent=2))
+                    output('Error from server:')
+                    output(json.dumps(err.response.json(), indent=2))
                 exit(1)
             release_names.append(superblob['name'])
 

@@ -6,6 +6,7 @@ from urllib.parse import urljoin
 
 
 class Environment(object):
+    _bearer_token = None
     _url = None
     _username = None
     _password = None
@@ -15,13 +16,10 @@ class Environment(object):
         self.session.headers.update({'Accept': 'application/json'})
 
         self.url = url
-        self.username = kwargs.get('username', None)
-        self.password = kwargs.get('password', None)
-
-        self._reconfigure_session()
+        self.bearer_token = kwargs.get('bearer_token')
 
     def _reconfigure_session(self):
-        self.session.auth = (self.username, self.password)
+        self.session.headers.update({'Authorization': f'Bearer {self.bearer_token}'})
 
     @property
     def url(self):
@@ -33,21 +31,12 @@ class Environment(object):
         self._reconfigure_session()
 
     @property
-    def username(self):
-        return self._username
+    def bearer_token(self):
+        return self._bearer_token
 
-    @username.setter
-    def username(self, value):
-        self._username = value
-        self._reconfigure_session()
-
-    @property
-    def password(self):
-        return self._password
-
-    @password.setter
-    def password(self, value):
-        self._password = value
+    @bearer_token.setter
+    def bearer_token(self, value):
+        self._bearer_token = value
         self._reconfigure_session()
 
     def __eq__(self, other):
@@ -65,10 +54,9 @@ class Environment(object):
         url = self.get_url(endpoint)
 
         if data:
-            response = self.session.post(url, auth=(self.username, self.password), json=data,
-                                         timeout=5)
+            response = self.session.post(url, json=data, timeout=5)
         else:
-            response = self.session.get(url, auth=(self.username, self.password), timeout=5)
+            response = self.session.get(url, timeout=5)
 
         response.raise_for_status()
 

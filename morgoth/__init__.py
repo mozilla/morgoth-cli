@@ -3,7 +3,6 @@ import os
 
 HOME_DIR = os.path.expanduser('~')
 CONFIG_PATH = os.path.join(HOME_DIR, '.morgoth_config')
-GPG_HOMEDIR_DEFAULT = os.path.join(HOME_DIR, '.gnupg')
 
 STATUS_5H17 = base64.b64decode(
     b'CiAgICAgKCAgICkKICAoICAgKSAoCiAgICkgXyAgICkKIC'

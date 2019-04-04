@@ -1,16 +1,6 @@
-import base64
 import configparser
-from pretty_bad_protocol import gnupg
 
 from morgoth import CONFIG_PATH
-
-
-class GPGImproperlyConfigured(Exception):
-    pass
-
-
-class DecryptionError(Exception):
-    pass
 
 
 class Settings(object):
@@ -32,14 +22,6 @@ class Settings(object):
                 f.seek(0)
                 self.config.read_file(f)
 
-    @property
-    def gpg(self):
-        if not self.get('gpg.fingerprint'):
-            raise GPGImproperlyConfigured()
-
-        return gnupg.GPG(binary=self.get('gpg.binary', 'gpg'),
-                         homedir=self.get('gpg.homedir'), use_agent=True)
-
     @staticmethod
     def _parse_key(key):
         keys = key.split('.', 1)
@@ -47,15 +29,7 @@ class Settings(object):
             keys = ['morgoth'] + keys
         return keys
 
-    def _encrypt(self, value):
-        encrypted = self.gpg.encrypt(value, self.get('gpg.fingerprint'))
-        return base64.b64encode(str(encrypted).encode()).decode()
-
-    def _decrypt(self, value):
-        decoded = base64.b64decode(value.encode()).decode()
-        return self.gpg.decrypt(decoded)
-
-    def get(self, key, default=None, decrypt=False):
+    def get(self, key, default=None):
         keys = self._parse_key(key)
 
         try:
@@ -63,10 +37,6 @@ class Settings(object):
         except KeyError:
             return default
 
-        if decrypt:
-            decrypted = self._decrypt(value)
-            if not decrypted.ok:
-                raise DecryptionError(f'Could not decrypt setting {key}: {decrypted.status}')
         return value
 
     def _set(self, key, value):
@@ -79,10 +49,6 @@ class Settings(object):
 
     def set(self, key, value):
         keys = self._parse_key(key)
-
-        if keys == ['morgoth', 'password']:
-            value = self._encrypt(value)
-
         self._set(key, value)
 
     def delete(self, key):
