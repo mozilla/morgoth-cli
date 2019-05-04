@@ -330,6 +330,17 @@ def modify_rules(rule_ids, add, bearer, remove, verbose):
         # Fetch release for rule
         superblob = environment.fetch(f'releases/{rule["mapping"]}')
 
+        # Handle rules that are not using the superblob schema
+        if not superblob["schema_version"] == 4000:
+            new_release = {
+                "blobs": [],
+                "name": "",
+                "schema_version": 4000
+            }
+
+            if superblob["schema"] == 5000:
+                new_release["blobs"].append(superblob["name"])
+
         # Construct new superblob with release
         if add and add not in superblob['blobs']:
             superblob['blobs'].append(add)
