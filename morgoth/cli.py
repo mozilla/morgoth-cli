@@ -317,11 +317,9 @@ def modify():
 
 @modify.command('rules')
 @click.argument('rule_ids', nargs=-1)
-@click.option('--add', '-a', help='Add a release to the rules.')
 @click.option('--bearer', '-b', default=None)
-@click.option('--remove', '-r', help='Remove a release from the rules.')
 @click.option('--verbose', '-v', is_flag=True)
-def modify_rules(rule_ids, add, bearer, remove, verbose):
+def modify_rules(rule_ids, bearer, verbose):
     """Modify rules."""
     extra_kw = {}
     if bearer:
@@ -333,10 +331,37 @@ def modify_rules(rule_ids, add, bearer, remove, verbose):
     releases = data.get('releases', [])
     release_names = [r.get('name') for r in releases if r.get('product') == 'SystemAddons']
 
-    # Validate release to be added
-    if add and add not in release_names:
-        output('The release you are trying to add does not exist.', Fore.RED)
-        exit(1)
+    # Check for releases to be added
+    adds = []
+    add_message = 'Would you like to add a release to these rules?'
+    while click.confirm(add_message):
+        add = click.prompt('Release name')
+        if add not in release_names:
+            # Validate release to be added
+            output('The release you are trying to add does not exist.', Fore.RED)
+        else:
+            adds.append(add)
+        add_message = 'Would you like to add another release to these rules?'
+
+    # Check for releases to be added
+    removes = []
+    remove_message = 'Would you like to remove a release from these rules?'
+    while click.confirm(remove_message):
+        remove = click.prompt('Release name')
+        removes.append(remove)
+        remove_message = 'Would you like to remove another release from these rules?'
+
+    if len(adds) + len(removes) == 0:
+        output('No changes to be made.', Fore.YELLOW)
+        exit(0)
+
+    # Initial report
+    output('')
+    if adds:
+        output(f'Adding: {", ".join(adds)}', Style.BRIGHT)
+    if removes:
+        output(f'Removing: {", ".join(removes)}', Style.BRIGHT)
+    output('')
 
     for rule_id in rule_ids:
         # Fetch existing rule
@@ -353,14 +378,20 @@ def modify_rules(rule_ids, add, bearer, remove, verbose):
                 "schema_version": 4000
             }
 
-            if superblob["schema"] == 5000:
+            if superblob.get("schema") == 5000:
                 new_release["blobs"].append(superblob["name"])
 
+            superblob = new_release
+
         # Construct new superblob with release
-        if add and add not in superblob['blobs']:
-            superblob['blobs'].append(add)
-        if remove and remove in superblob['blobs']:
-            superblob['blobs'].remove(remove)
+        for add in adds:
+            if add and add not in superblob['blobs']:
+                output(f'+ Adding: {add}', Fore.GREEN)
+                superblob['blobs'].append(add)
+        for remove in removes:
+            if remove and remove in superblob['blobs']:
+                output(f'- Removing: {remove}', Fore.RED)
+                superblob['blobs'].remove(remove)
         superblob['blobs'].sort()
         name_hash = sha256('-'.join(superblob['blobs']).encode()).hexdigest()
         superblob['name'] = f'Superblob-{name_hash}'
@@ -384,8 +415,8 @@ def modify_rules(rule_ids, add, bearer, remove, verbose):
 
         if update_mapping or create_release:
             if not click.confirm('Apply these changes?'):
-                output('Aborted!')
-                exit(1)
+                output('Skipped.\n', Fore.YELLOW)
+                continue
         else:
             output(f'Skipping rule {rule_id}, nothing to change.', Fore.YELLOW)
             continue
