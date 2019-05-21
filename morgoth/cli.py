@@ -1,6 +1,5 @@
 import os
 import json
-import tempfile
 
 from datetime import datetime
 from hashlib import sha256
@@ -14,7 +13,7 @@ from requests.exceptions import HTTPError, Timeout
 from morgoth import CONFIG_PATH, STATUS_5H17
 from morgoth.environment import Environment
 from morgoth.settings import settings
-from morgoth.utils import output
+from morgoth.utils import output, validate_uploaded_xpi_hash
 from morgoth.xpi import XPI
 
 
@@ -151,34 +150,50 @@ def make_release(xpi_file, bearer, profile, verbose):
         s3 = session.resource('s3')
         bucket = s3.Bucket(settings.get('aws.bucket_name', DEFAULT_AWS_BUCKET_NAME))
 
-        exists = False
+        existing_files = []
         for obj in bucket.objects.filter(Prefix=prefix):
-            if obj.key == xpi.get_ftp_path(prefix):
-                exists = True
+            existing_files.append(obj.key)
+
+        suffix = ''
+        upload_path = xpi.get_ftp_path(prefix)
+        exists = upload_path in existing_files
 
         uploaded = False
         if exists:
-            tmpdir = tempfile.mkdtemp()
-            download_path = os.path.join(tmpdir, xpi.file_name)
-            bucket.download_file(xpi.get_ftp_path(prefix), download_path)
-            uploaded_xpi = XPI(download_path)
-
-            if uploaded_xpi.sha512sum == xpi.sha512sum:
-                output('XPI already uploaded.', Fore.GREEN)
+            if validate_uploaded_xpi_hash(xpi, bucket, upload_path):
                 uploaded = True
             else:
-                output('XPI with matching filename already uploaded.', Fore.YELLOW)
+                index = 2
+                check_path = xpi.get_ftp_path(prefix, suffix='-{}'.format(index))
+                while check_path in existing_files:
+                    if validate_uploaded_xpi_hash(xpi, bucket, check_path):
+                        uploaded = True
+                        suffix = '-{}'.format(index)
+                        break
+                    index += 1
+                    check_path = xpi.get_ftp_path(prefix, suffix='-{}'.format(index))
+
+            if uploaded:
+                output(
+                    'XPI already uploaded: {}'.format(xpi.get_ftp_path(prefix, suffix=suffix)),
+                    Fore.GREEN)
 
         if not uploaded:
-            if exists and not click.confirm('Would you like to replace it?'):
-                output('Aborting.', Fore.RED)
-                exit(1)
+            if exists:
+                output('XPI with matching filename already uploaded.', Fore.YELLOW)
+                if not click.confirm('Would you like to replace it?'):
+                    index = 2
+                    upload_path = xpi.get_ftp_path(prefix, suffix='-{}'.format(index))
+                    while upload_path in existing_files:
+                        index += 1
+                        suffix = '-{}'.format(index)
+                        upload_path = xpi.get_ftp_path(prefix, suffix=suffix)
             with open(xpi.path, 'rb') as data:
-                bucket.put_object(Key=xpi.get_ftp_path(prefix), Body=data)
-                output('XPI uploaded successfully.', Fore.GREEN)
+                bucket.put_object(Key=upload_path, Body=data)
+                output('XPI uploaded to: {}'.format(upload_path), Fore.GREEN)
 
         release_data = xpi.generate_release_data(
-            settings.get('aws.base_url', DEFAULT_AWS_BASE_URL), prefix)
+            settings.get('aws.base_url', DEFAULT_AWS_BASE_URL), prefix, suffix=suffix)
 
         if click.confirm('Upload release to Balrog?'):
             extra_kw = {}
@@ -188,11 +203,11 @@ def make_release(xpi_file, bearer, profile, verbose):
 
             try:
                 environment.request('releases', data={
-                'blob': json.dumps(release_data),
-                'name': xpi.release_name,
-                'product': 'SystemAddons',
-                'csrf_token': environment.csrf(),
-            })
+                    'blob': json.dumps(release_data),
+                    'name': '{}{}'.format(xpi.release_name, suffix),
+                    'product': 'SystemAddons',
+                    'csrf_token': environment.csrf(),
+                })
             except HTTPError as err:
                 output(f'An error occured: HTTP {err.response.status_code}', Fore.RED)
                 if verbose:
@@ -204,7 +219,7 @@ def make_release(xpi_file, bearer, profile, verbose):
                     output(json.dumps(err.response.json(), indent=2))
                 exit(1)
 
-            output('Uploaded: {}{}'.format(Style.BRIGHT, xpi.release_name))
+            output('Uploaded: {}{}{}'.format(Style.BRIGHT, xpi.release_name, suffix))
         elif click.confirm('Save release to file?'):
             json_path = 'releases/{}.json'.format(xpi.release_name)
 

@@ -50,11 +50,14 @@ class Environment(object):
     def get_url(self, endpoint):
         return urljoin(self.url, '{}/{}'.format('api', endpoint))
 
-    def request(self, endpoint, data=None):
+    def request(self, endpoint, data=None, patch=False):
         url = self.get_url(endpoint)
 
         if data:
-            response = self.session.post(url, json=data, timeout=5)
+            if patch:
+                response = self.session.patch(url, json=data, timeout=5)
+            else:
+                response = self.session.post(url, json=data, timeout=5)
         else:
             response = self.session.get(url, timeout=5)
 

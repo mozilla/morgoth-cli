@@ -117,14 +117,14 @@ class XPI(object):
                 self._hashed = hashlib.sha512(f.read()).hexdigest()
         return self._hashed
 
-    def get_ftp_path(self, prefix):
-        return os.path.join(prefix, self.short_name, self.file_name)
+    def get_ftp_path(self, prefix, suffix=''):
+        return os.path.join(prefix, self.short_name, ''.join([self.file_name[:-4], suffix, '.xpi']))
 
-    def generate_release_data(self, base_url, prefix):
+    def generate_release_data(self, base_url, prefix, suffix=''):
         platforms = PLATFORMS
         platforms.update({
             'default': {
-                'fileUrl': '{}{}'.format(base_url, self.get_ftp_path(prefix)),
+                'fileUrl': '{}{}'.format(base_url, self.get_ftp_path(prefix, suffix=suffix)),
                 'filesize': self.file_size,
                 'hashValue': self.sha512sum,
             }
@@ -138,7 +138,7 @@ class XPI(object):
                 }
             },
             'hashFunction': 'sha512',
-            'name': self.release_name,
+            'name': '{}{}'.format(self.release_name, suffix),
             'product': 'SystemAddons',
             'schema_version': 5000,
         }
