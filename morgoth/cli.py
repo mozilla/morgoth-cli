@@ -394,7 +394,7 @@ def modify_rules(rule_ids, bearer, verbose):
                 output(f'- Removing: {remove}', Fore.RED)
                 superblob['blobs'].remove(remove)
 
-        if len(superblob) > 0:
+        if len(superblob['blobs']) > 0:
             superblob['blobs'].sort()
             name_hash = sha256('-'.join(superblob['blobs']).encode()).hexdigest()
             superblob['name'] = f'Superblob-{name_hash}'
