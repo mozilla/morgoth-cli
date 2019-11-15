@@ -123,8 +123,9 @@ def make():
 @click.option('--bearer', '-b', default=None)
 @click.option('--profile', default=settings.get('aws.profile'))
 @click.option('--verbose', '-v', is_flag=True)
+@click.option('--reupload', is_flag=True)
 @click.argument('xpi_file')
-def make_release(xpi_file, bearer, profile, verbose):
+def make_release(xpi_file, bearer, profile, verbose, reupload):
     """Make a new release from an XPI file."""
     prefix = settings.get('aws.prefix', DEFAULT_AWS_PREFIX)
 
@@ -178,7 +179,7 @@ def make_release(xpi_file, bearer, profile, verbose):
                     'XPI already uploaded: {}'.format(xpi.get_ftp_path(prefix, suffix=suffix)),
                     Fore.GREEN)
 
-        if not uploaded:
+        if not uploaded or reupload:
             if exists:
                 output('XPI with matching filename already uploaded.', Fore.YELLOW)
                 if not click.confirm('Would you like to replace it?'):
@@ -392,9 +393,14 @@ def modify_rules(rule_ids, bearer, verbose):
             if remove and remove in superblob['blobs']:
                 output(f'- Removing: {remove}', Fore.RED)
                 superblob['blobs'].remove(remove)
-        superblob['blobs'].sort()
-        name_hash = sha256('-'.join(superblob['blobs']).encode()).hexdigest()
-        superblob['name'] = f'Superblob-{name_hash}'
+
+        if len(superblob) > 0:
+            superblob['blobs'].sort()
+            name_hash = sha256('-'.join(superblob['blobs']).encode()).hexdigest()
+            superblob['name'] = f'Superblob-{name_hash}'
+        else:
+            output('All addons were removed.', Fore.YELLOW)
+            superblob['name'] = 'SystemAddons-no-update'
 
         # Check if the superblob already exists
         create_release = superblob['name'] not in release_names

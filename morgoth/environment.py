@@ -52,6 +52,7 @@ class Environment(object):
 
     def request(self, endpoint, data=None, patch=False):
         url = self.get_url(endpoint)
+        self.session.headers.update(({'Referer': url}))
 
         if data:
             if patch:
