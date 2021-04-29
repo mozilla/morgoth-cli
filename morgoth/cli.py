@@ -25,7 +25,7 @@ DEFAULT_AWS_PREFIX = 'pub/system-addons/'
 
 def get_validated_environment(**kwargs):
     environment = Environment(
-        kwargs.get('url', settings.get('balrog_url')),
+        kwargs.get('url', settings.get('balrog_url', DEFAULT_BALROG_URL)),
         bearer_token=kwargs.get('bearer_token', settings.get('bearer_token')))
 
     try:
@@ -468,5 +468,65 @@ def modify_rules(rule_ids, bearer, verbose):
                 if 'data' in response_data:
                     output(response_data.get('data'), Fore.RED)
                 exit(1)
+
+    output('Done!', Fore.GREEN)
+
+
+@cli.group()
+def promote():
+    """Modify an object"""
+    pass
+
+
+@promote.command('rules')
+@click.argument('rule_ids', nargs=-1)
+@click.option('--bearer', '-b', default=None)
+@click.option('--verbose', '-v', is_flag=True)
+def promote_rules(rule_ids, bearer, verbose):
+    """Promote rules."""
+    extra_kw = {}
+    if bearer:
+        extra_kw.update({"bearer_token": bearer})
+    environment = get_validated_environment(verbose=verbose)
+
+    csrf_token = environment.csrf()
+
+    for rule_id in rule_ids:
+        # Fetch existing rule
+        rule = environment.fetch(f'rules/{rule_id}')
+
+        # Check the channel is a test channel
+        if "-sysaddon" not in rule.get("channel"):
+            output(f"Rule {rule_id} does not have a `-sysaddon` suffix in the channel.", Fore.RED)
+            continue
+
+        ts_now = int(datetime.now().timestamp() * 1000)
+
+        updated_channel = rule.get("channel").replace("-sysaddon", "")
+
+        # Confirm the change is expected and update
+        if not click.confirm(f"Rule {rule_id} updated to `{updated_channel}`. Continue?"):
+            output("Skipping...")
+            continue
+
+        rule["channel"] = updated_channel
+        del rule["rule_id"]
+        try:
+            environment.request('scheduled_changes/rules', data={
+                **rule,
+                'when': ts_now + (5 * 1000),  # in five seconds
+                'change_type': 'insert',
+                'csrf_token': csrf_token,
+            })
+            output("Updated!", Fore.GREEN)
+        except HTTPError as err:
+            response_data = err.response.json()
+            output('Unable to update rule!', Fore.RED)
+            if verbose:
+                output(response_data, Fore.RED)
+            else:
+                if 'data' in response_data:
+                    output(response_data.get('data'), Fore.RED)
+            exit(1)
 
     output('Done!', Fore.GREEN)
