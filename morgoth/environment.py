@@ -74,9 +74,6 @@ class Environment(object):
         response = self.request('rules')
         return response.status_code == 200 and response.headers['content-type']
 
-    def csrf(self):
-        return self.request('csrf_token').headers['x-csrf-token']
-
     def save(self, path):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w') as f:

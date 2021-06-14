@@ -207,7 +207,6 @@ def make_release(xpi_file, bearer, profile, verbose, reupload):
                     'blob': json.dumps(release_data),
                     'name': '{}{}'.format(xpi.release_name, suffix),
                     'product': 'SystemAddons',
-                    'csrf_token': environment.csrf(),
                 })
             except HTTPError as err:
                 output(f'An error occured: HTTP {err.response.status_code}', Fore.RED)
@@ -283,7 +282,6 @@ def make_superblob(releases, bearer, verbose):
                 'blob': json.dumps(sb_data),
                 'name': sb_name,
                 'product': 'SystemAddons',
-                'csrf_token': environment.csrf(),
             })
         except HTTPError as err:
             output(f'An error occured: HTTP {err.response.status_code}', Fore.RED)
@@ -427,8 +425,6 @@ def modify_rules(rule_ids, bearer, verbose):
             output(f'Skipping rule {rule_id}, nothing to change.', Fore.YELLOW)
             continue
 
-        csrf_token = environment.csrf()
-
         # Create release
         if create_release:
             try:
@@ -436,7 +432,6 @@ def modify_rules(rule_ids, bearer, verbose):
                     'blob': json.dumps(superblob),
                     'name': superblob['name'],
                     'product': 'SystemAddons',
-                    'csrf_token': csrf_token,
                 })
             except HTTPError as err:
                 output('Unable to create release', Fore.RED)
@@ -460,7 +455,6 @@ def modify_rules(rule_ids, bearer, verbose):
                     **rule,
                     'when': ts_now + (5 * 1000),  # in five seconds
                     'change_type': 'update',
-                    'csrf_token': csrf_token,
                 })
             except HTTPError as err:
                 response_data = err.response.json()
@@ -489,8 +483,6 @@ def promote_rules(rule_ids, bearer, verbose):
         extra_kw.update({"bearer_token": bearer})
     environment = get_validated_environment(verbose=verbose)
 
-    csrf_token = environment.csrf()
-
     for rule_id in rule_ids:
         # Fetch existing rule
         rule = environment.fetch(f'rules/{rule_id}')
@@ -516,7 +508,6 @@ def promote_rules(rule_ids, bearer, verbose):
                 **rule,
                 'when': ts_now + (5 * 1000),  # in five seconds
                 'change_type': 'insert',
-                'csrf_token': csrf_token,
             })
             output("Updated!", Fore.GREEN)
         except HTTPError as err:
