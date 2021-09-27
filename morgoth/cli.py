@@ -207,7 +207,7 @@ def make_release(xpi_file, bearer, profile, verbose, reupload):
                     'blob': json.dumps(release_data),
                     'name': '{}{}'.format(xpi.release_name, suffix),
                     'product': 'SystemAddons',
-                })
+                }, api_version=2)
             except HTTPError as err:
                 output(f'An error occured: HTTP {err.response.status_code}', Fore.RED)
                 if verbose:
@@ -282,7 +282,7 @@ def make_superblob(releases, bearer, verbose):
                 'blob': json.dumps(sb_data),
                 'name': sb_name,
                 'product': 'SystemAddons',
-            })
+            }, api_version=2)
         except HTTPError as err:
             output(f'An error occured: HTTP {err.response.status_code}', Fore.RED)
             if verbose:
@@ -326,7 +326,7 @@ def modify_rules(rule_ids, bearer, verbose):
     environment = get_validated_environment(verbose=verbose)
 
     # Fetch a list of all releases
-    data = environment.request('releases').json()
+    data = environment.request('releases', api_version=2).json()
     releases = data.get('releases', [])
     release_names = [r.get('name') for r in releases if r.get('product') == 'SystemAddons']
 
@@ -367,7 +367,7 @@ def modify_rules(rule_ids, bearer, verbose):
         rule = environment.fetch(f'rules/{rule_id}')
 
         # Fetch release for rule
-        superblob = environment.fetch(f'releases/{rule["mapping"]}')
+        superblob = environment.fetch(f'releases/{rule["mapping"]}', api_version=2)
 
         # Handle rules that are not using the superblob schema
         if not superblob["schema_version"] == 4000:
@@ -432,7 +432,7 @@ def modify_rules(rule_ids, bearer, verbose):
                     'blob': json.dumps(superblob),
                     'name': superblob['name'],
                     'product': 'SystemAddons',
-                })
+                }, api_version=2)
             except HTTPError as err:
                 output('Unable to create release', Fore.RED)
                 output(f'An error occured: HTTP {err.response.status_code}', Fore.RED)
