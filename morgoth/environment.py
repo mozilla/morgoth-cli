@@ -47,11 +47,18 @@ class Environment(object):
         with open(path, 'r') as f:
             return cls(f.read())
 
-    def get_url(self, endpoint):
-        return urljoin(self.url, '{}/{}'.format('api', endpoint))
+    def get_url(self, endpoint, api_version=1):
+        if api_version == 2:
+            if "rules" in endpoint:
+                raise NotImplementedError(f"Rules aren't supported in api 2: {endpoint}")
+            return urljoin(self.url, f"api/v2/{endpoint}")
+        elif api_version == 1:
+            return urljoin(self.url, f"api/{endpoint}")
+        else:
+            raise NotImplementedError(f"Unknown api version {api_version}")
 
-    def request(self, endpoint, data=None, patch=False):
-        url = self.get_url(endpoint)
+    def request(self, endpoint, data=None, patch=False, api_version=1):
+        url = self.get_url(endpoint, api_version=api_version)
         self.session.headers.update(({'Referer': url}))
 
         if data:
