@@ -147,54 +147,56 @@ def make_release(xpi_file, bearer, profile, verbose, reupload):
             output('Release could not be auto-generated.', Fore.RED)
             exit(1)
 
-        session = boto3.Session(profile_name=profile)
-        s3 = session.resource('s3')
-        bucket = s3.Bucket(settings.get('aws.bucket_name', DEFAULT_AWS_BUCKET_NAME))
+        if not xpi.archived:
+            session = boto3.Session(profile_name=profile)
+            s3 = session.resource('s3')
+            bucket = s3.Bucket(settings.get('aws.bucket_name', DEFAULT_AWS_BUCKET_NAME))
 
-        existing_files = []
-        for obj in bucket.objects.filter(Prefix=prefix):
-            existing_files.append(obj.key)
+            existing_files = []
+            for obj in bucket.objects.filter(Prefix=prefix):
+                existing_files.append(obj.key)
 
-        suffix = ''
-        upload_path = xpi.get_ftp_path(prefix)
-        exists = upload_path in existing_files
+            suffix = ''
+            upload_path = xpi.get_ftp_path(prefix)
+            exists = upload_path in existing_files
 
-        uploaded = False
-        if exists:
-            if validate_uploaded_xpi_hash(xpi, bucket, upload_path):
-                uploaded = True
-            else:
-                index = 2
-                check_path = xpi.get_ftp_path(prefix, suffix='-{}'.format(index))
-                while check_path in existing_files:
-                    if validate_uploaded_xpi_hash(xpi, bucket, check_path):
-                        uploaded = True
-                        suffix = '-{}'.format(index)
-                        break
-                    index += 1
-                    check_path = xpi.get_ftp_path(prefix, suffix='-{}'.format(index))
-
-            if uploaded:
-                output(
-                    'XPI already uploaded: {}'.format(xpi.get_ftp_path(prefix, suffix=suffix)),
-                    Fore.GREEN)
-
-        if not uploaded or reupload:
+            uploaded = False
             if exists:
-                output('XPI with matching filename already uploaded.', Fore.YELLOW)
-                if not click.confirm('Would you like to replace it?'):
+                if validate_uploaded_xpi_hash(xpi, bucket, upload_path):
+                    uploaded = True
+                else:
                     index = 2
-                    upload_path = xpi.get_ftp_path(prefix, suffix='-{}'.format(index))
-                    while upload_path in existing_files:
+                    check_path = xpi.get_ftp_path(prefix, suffix='-{}'.format(index))
+                    while check_path in existing_files:
+                        if validate_uploaded_xpi_hash(xpi, bucket, check_path):
+                            uploaded = True
+                            suffix = '-{}'.format(index)
+                            break
                         index += 1
-                        suffix = '-{}'.format(index)
-                        upload_path = xpi.get_ftp_path(prefix, suffix=suffix)
-            with open(xpi.path, 'rb') as data:
-                bucket.put_object(Key=upload_path, Body=data)
-                output('XPI uploaded to: {}'.format(upload_path), Fore.GREEN)
+                        check_path = xpi.get_ftp_path(prefix, suffix='-{}'.format(index))
 
-        release_data = xpi.generate_release_data(
-            settings.get('aws.base_url', DEFAULT_AWS_BASE_URL), prefix, suffix=suffix)
+                if uploaded:
+                    output(
+                        'XPI already uploaded: {}'.format(xpi.get_ftp_path(prefix, suffix=suffix)),
+                        Fore.GREEN)
+
+            if not uploaded or reupload:
+                if exists:
+                    output('XPI with matching filename already uploaded.', Fore.YELLOW)
+                    if not click.confirm('Would you like to replace it?'):
+                        index = 2
+                        upload_path = xpi.get_ftp_path(prefix, suffix='-{}'.format(index))
+                        while upload_path in existing_files:
+                            index += 1
+                            suffix = '-{}'.format(index)
+                            upload_path = xpi.get_ftp_path(prefix, suffix=suffix)
+                with open(xpi.path, 'rb') as data:
+                    bucket.put_object(Key=upload_path, Body=data)
+                    output('XPI uploaded to: {}'.format(upload_path), Fore.GREEN)
+            release_data = xpi.generate_release_data(
+                base_url=settings.get('aws.base_url', DEFAULT_AWS_BASE_URL), prefix=prefix, suffix=suffix)
+        else:
+            release_data = xpi.generate_release_data()
 
         if click.confirm('Upload release to Balrog?'):
             extra_kw = {}
