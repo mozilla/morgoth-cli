@@ -3,6 +3,8 @@ import json
 import os
 import tempfile
 import zipfile
+import requests
+from io import BytesIO
 
 from xml.etree import ElementTree
 
@@ -57,8 +59,21 @@ class XPI(object):
         pass
 
     def __init__(self, path):
-        if not os.path.isfile(path):
-            raise XPI.DoesNotExist()
+        if path.startswith("https://") or path.startswith("http://"):
+            response = requests.get(path)
+            if response.status_code != 200:
+                raise XPI.DoesNotExist()
+            self.archived = True
+            self._stream = BytesIO(response.content)
+            self._xpi_file = tempfile.NamedTemporaryFile()
+            self._url = path
+            path = self._xpi_file.name
+            with open(path, "wb") as fh:
+                fh.write(self._stream.getbuffer())
+        else:
+            if not os.path.isfile(path):
+                raise XPI.DoesNotExist()
+            self.archived = False
 
         self.path = path
 
@@ -120,11 +135,15 @@ class XPI(object):
     def get_ftp_path(self, prefix, suffix=''):
         return os.path.join(prefix, self.short_name, ''.join([self.file_name[:-4], suffix, '.xpi']))
 
-    def generate_release_data(self, base_url, prefix, suffix=''):
+    def generate_release_data(self, base_url='', prefix='', suffix=''):
         platforms = PLATFORMS
+        if self.archived:
+            file_url = self._url
+        else:
+            file_url = '{}{}'.format(base_url, self.get_ftp_path(prefix, suffix=suffix))
         platforms.update({
             'default': {
-                'fileUrl': '{}{}'.format(base_url, self.get_ftp_path(prefix, suffix=suffix)),
+                'fileUrl': file_url,
                 'filesize': self.file_size,
                 'hashValue': self.sha512sum,
             }
