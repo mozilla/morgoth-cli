@@ -197,6 +197,7 @@ def make_release(xpi_file, bearer, profile, verbose, reupload):
                 base_url=settings.get('aws.base_url', DEFAULT_AWS_BASE_URL), prefix=prefix, suffix=suffix)
         else:
             release_data = xpi.generate_release_data()
+            suffix = ''
 
         if click.confirm('Upload release to Balrog?'):
             extra_kw = {}
