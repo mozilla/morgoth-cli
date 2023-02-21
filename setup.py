@@ -4,6 +4,7 @@ from setuptools import setup
 setup(
     name='morgoth',
     version='0.1.0',
+    license='MPL2',
     py_modules=[
         'morgoth',
     ],
